@@ -13,7 +13,16 @@ pub fn tokenize(input: String) -> Result<Vec<Token>, TokenizeError> {
 }
 
 fn make_token(chars: &Vec<char>, index: &mut usize) -> Result<Token, TokenizeError> {
-    let ch = chars[*index];
+    let mut ch = chars[*index];
+
+    while ch.is_ascii_whitespace() {
+        *index += 1;
+        if *index > chars.len() {
+            return Err(TokenizeError::UnexpectedEof);
+        }
+        ch = chars[*index];
+    }
+
     let token = match ch {
         '[' => Token::LeftBracket,
         ']' => Token::RightBracket,
@@ -25,6 +34,8 @@ fn make_token(chars: &Vec<char>, index: &mut usize) -> Result<Token, TokenizeErr
         't' => tokenize_true(chars, index)?,
         'f' => tokenize_false(chars, index)?,
         c if c.is_ascii_digit() => tokenize_float(chars, index)?,
+        '"' => tokenize_string(chars, index)?,
+        c => return Err(TokenizeError::CharNotRecognized(c)),
         _ => todo!("implement other tokens"),
     };
     Ok(token)
@@ -37,6 +48,12 @@ pub enum TokenizeError {
     UnfinishedLiteralValue,
     /// Unable to parse the float value
     ParseNumberError,
+    /// String was never completed
+    UnclosedQuotes,
+    /// The input ended early
+    UnexpectedEof,
+    /// Character is not part of a json token
+    CharNotRecognized(char),
 }
 
 fn tokenize_null(chars: &Vec<char>, index: &mut usize) -> Result<Token, TokenizeError> {
@@ -94,6 +111,27 @@ fn tokenize_float(chars: &Vec<char>, cur_idx: &mut usize) -> Result<Token, Token
         .map(|num| Token::Number(num))
         .map_err(|_| TokenizeError::ParseNumberError)
 }
+
+fn tokenize_string(chars: &Vec<char>, cur_idx: &mut usize) -> Result<Token, TokenizeError> {
+    let mut string = String::new();
+    let mut is_escaping = false;
+
+    loop {
+        *cur_idx += 1;
+        if *cur_idx >= chars.len() {
+            return Err(TokenizeError::UnclosedQuotes);
+        }
+        let ch = chars[*cur_idx];
+        match ch {
+            '"' if !is_escaping => break,
+            '\\' => is_escaping = !is_escaping,
+            _ => is_escaping = false,
+        }
+        string.push(ch);
+    }
+    Ok(Token::String(string))
+}
+
 ///
 ///
 /// {
@@ -152,7 +190,7 @@ pub enum Token {
 
 #[cfg(test)]
 mod tests {
-    use super::{tokenize, Token};
+    use super::{tokenize, Token, TokenizeError};
 
     #[test]
     fn just_comma() {
@@ -255,6 +293,33 @@ mod tests {
     fn float_comma() {
         let input = String::from("123.4,");
         let expected = [Token::Number(123.4), Token::Comma];
+
+        let actual = tokenize(input).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn just_ken() {
+        let input = String::from("\"ken\"");
+        let expected = [Token::String(String::from("ken"))];
+
+        let actual = tokenize(input).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn unclosed_string() {
+        let input = String::from("\"unclosed");
+        let expected = Err(TokenizeError::UnclosedQuotes);
+
+        let actual = tokenize(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn escaped_quote() {
+        let input = String::from(r#""The \" is Ok ""#);
+        let expected = [Token::String(String::from(r#"The \" is Ok "#))];
 
         let actual = tokenize(input).unwrap();
         assert_eq!(actual, expected);
