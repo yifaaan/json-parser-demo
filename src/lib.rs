@@ -1,8 +1,9 @@
+mod parse;
 mod tokenize;
-
 use std::collections::HashMap;
 
 /// Representation of a Json value
+#[derive(Debug, PartialEq)]
 pub enum Value {
     /// literal characters `null`
     Null,
