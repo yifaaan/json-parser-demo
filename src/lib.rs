@@ -1,3 +1,5 @@
+mod tokenize;
+
 use std::collections::HashMap;
 
 /// Representation of a Json value
